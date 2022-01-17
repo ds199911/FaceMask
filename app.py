@@ -1,22 +1,32 @@
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request
 import io
 import json
 from PIL import Image
 import torchvision.models as models
 import torchvision.transforms as transforms
-
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+import torch
 app = Flask(__name__)
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg'}
-imagenet_index = json.load(open('imagenet_class_index.json'))
+
+#load model
+model = models.detection.fasterrcnn_resnet50_fpn(False)
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+model.roi_heads.box_predictor = FastRCNNPredictor(in_features, 3)
+model.load_state_dict(torch.load('model.pt', map_location='cpu'))
+model.eval()
+# model.to(device)
 
 
-model = models.googlenet(True)
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit(".",1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    return render_template('index.html')
+    return 'Mask Detection'
 
 def image_transformation(image_bytes):
     image_transformations = transforms.Compose([transforms.Resize(255),
@@ -30,8 +40,9 @@ def image_transformation(image_bytes):
 def prediction(image_bytes):
     tensor = image_transformation(image_bytes)
     model_output = model.forward(tensor)
-    pred = model_output.max(1)[1]
-    return imagenet_index[str(pred.item())]
+    pred = model_output
+    print(pred)
+    return pred
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -40,8 +51,8 @@ def predict():
         
         if file and allowed_file(file.filename):
             image_bytes = file.read()
-            class_id, class_name = prediction(image_bytes)
-            return jsonify({'class id': class_id, 'class name': class_name})
+            pred = prediction(image_bytes)
+            return jsonify({'class id': pred })
         
         return "Could not Predict"
 
